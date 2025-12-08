@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse, urlunparse
 from langchain_core.runnables import RunnableConfig
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -167,6 +168,22 @@ def get_api_key_for_model(model_name: str, config: RunnableConfig):
     return os.getenv(key_name)
 
 
+def _normalize_mcp_base_url(raw_url: str) -> str:
+    """Map localhost URLs to an internal Docker hostname so containers can reach MCP."""
+    try:
+        parsed = urlparse(raw_url)
+        if parsed.hostname and parsed.hostname in {"localhost", "127.0.0.1"}:
+            internal_host = os.getenv("MCP_INTERNAL_HOSTNAME", "mcp")
+            netloc = internal_host
+            if parsed.port:
+                netloc = f"{internal_host}:{parsed.port}"
+            parsed = parsed._replace(netloc=netloc)
+            return urlunparse(parsed)
+    except Exception:
+        pass
+    return raw_url
+
+
 async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     tools = []
@@ -193,7 +210,8 @@ async def graph(config: RunnableConfig):
         and cfg.mcp_config.tools
         and (mcp_tokens or not cfg.mcp_config.auth_required)
     ):
-        server_url = cfg.mcp_config.url.rstrip("/") + "/mcp"
+        base_url = _normalize_mcp_base_url(cfg.mcp_config.url.rstrip("/"))
+        server_url = base_url + "/mcp"
 
         tool_names_to_find = set(cfg.mcp_config.tools)
         fetched_mcp_tools_list: list[StructuredTool] = []
