@@ -173,11 +173,15 @@ async def graph(config: RunnableConfig):
 
     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
     if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
+        print("RAG tool configured.")
+        rag_url = "http://langconnect:8080"
         for collection in cfg.rag.collections:
             rag_tool = await create_rag_tool(
-                cfg.rag.rag_url, collection, supabase_token
+                rag_url, collection, supabase_token
             )
             tools.append(rag_tool)
+    else:
+        print("RAG tool not configured due to missing parameters.")
 
     if cfg.mcp_config and cfg.mcp_config.auth_required:
         mcp_tokens = await fetch_tokens(config)
