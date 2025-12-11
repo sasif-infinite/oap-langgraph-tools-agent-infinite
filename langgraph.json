@@ -1,7 +1,8 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "agent": "./tools_agent/agent.py:graph"
+    "agent": "./tools_agent/agent.py:graph",
+    "supervisor": "./oap_supervisor/agent.py:graph"
   },
   "env": ".env",
   "python_version": "3.11",
