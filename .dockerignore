@@ -1,0 +1,9 @@
+# Ignore local venv and host-only files so they are not sent to docker build
+.venv
+.git
+__pycache__
+*.pyc
+.mypy_cache
+.pytest_cache
+/.venv
+/.venv/*

@@ -187,13 +187,16 @@ async def graph(config: RunnableConfig):
         mcp_tokens = await fetch_tokens(config)
     else:
         mcp_tokens = None
+
+    # Hardcode the MCP service URL so the agent always reaches the in-network MCP.
+    mcp_base_url = "http://oap-mcp-server:8000"
     if (
         cfg.mcp_config
-        and cfg.mcp_config.url
+        and mcp_base_url
         and cfg.mcp_config.tools
         and (mcp_tokens or not cfg.mcp_config.auth_required)
     ):
-        server_url = cfg.mcp_config.url.rstrip("/") + "/mcp"
+        server_url = mcp_base_url.rstrip("/") + "/mcp"
 
         tool_names_to_find = set(cfg.mcp_config.tools)
         fetched_mcp_tools_list: list[StructuredTool] = []
