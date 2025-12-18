@@ -4,3 +4,9 @@
 __pycache__
 .langgraph_api/
 *.egg-info/
+.github/
+.vscode/
+.venv/
+env/
+venv/
+*.pyc
