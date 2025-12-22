@@ -174,7 +174,11 @@ async def graph(config: RunnableConfig):
     supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
     if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
         print("RAG tool configured.")
-        rag_url = "http://langconnect:8080"
+        # Prefer user-supplied RAG URL, then env, then sensible in-network default
+        rag_url = (
+            os.getenv("INTERNAL_RAG_URL")
+            or "https://oap.agentsmp.com"
+        )
         for collection in cfg.rag.collections:
             rag_tool = await create_rag_tool(
                 rag_url, collection, supabase_token
