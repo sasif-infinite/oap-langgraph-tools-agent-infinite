@@ -193,7 +193,7 @@ async def graph(config: RunnableConfig):
         mcp_tokens = None
 
     # Hardcode the MCP service URL so the agent always reaches the in-network MCP.
-    mcp_base_url = "http://oap-mcp-server:8000"
+    mcp_base_url = "https://oap.agentsmp.com"
     if (
         cfg.mcp_config
         and mcp_base_url
