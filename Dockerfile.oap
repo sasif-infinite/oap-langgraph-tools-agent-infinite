@@ -1,24 +1,27 @@
-# Use Astral's uv image with Python preinstalled 
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm AS base 
-# Prevent Python from writing .pyc files & ensure unbuffered logs 
-ENV PYTHONDONTWRITEBYTECODE=1 \ 
-PYTHONUNBUFFERED=1 
-WORKDIR /app 
-# --- Dependency layer (maximizes build caching) --- 
-# Copy only files needed to resolve deps first 
-COPY pyproject.toml ./ 
-# Copy lock if present (keeps versions pinned & speeds up sync) 
-# Create the project venv and install deps 
-# --frozen requires lockfile if present and fails on drift RUN uv sync 
-# Make the venv available on PATH for subsequent layers and CMD 
-ENV PATH="/app/.venv/bin:${PATH}" 
-# --- App layer --- # Copy the rest of your project 
-COPY . . 
-# If your application expects a local .env file inside the image, 
-# uncomment the line below (not recommended for secrets in production). 
-# COPY .env ./ 
-# Expose LangGraph server port 
-EXPOSE 2024 
-# Run the LangGraph API server and bind to all interfaces for container access.
-# The CLI currently exposes a "dev" server for local/self-hosted use; use --no-browser to avoid opening Studio.
-CMD ["uv", "run", "langgraph", "dev", "--host", "0.0.0.0", "--port", "2024", "--no-browser"]
+FROM langchain/langgraph-api:3.11
+
+
+
+# -- Adding local package . --
+ADD . /deps/tool-agent
+# -- End of local package . --
+
+# -- Installing all local dependencies --
+RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e /deps/*
+# -- End of local dependencies install --
+# ENV LANGGRAPH_AUTH='{"path": "/deps/tool-agent/tools_agent/security/auth.py:auth"}'
+ENV LANGSERVE_GRAPHS='{"agent": "/deps/tool-agent/tools_agent/agent.py:graph", "supervisor": "/deps/tool-agent/oap_supervisor/agent.py:graph"}'
+
+
+
+# -- Ensure user deps didn't inadvertently overwrite langgraph-api
+RUN mkdir -p /api/langgraph_api /api/langgraph_runtime /api/langgraph_license && touch /api/langgraph_api/__init__.py /api/langgraph_runtime/__init__.py /api/langgraph_license/__init__.py
+RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir --no-deps -e /api
+# -- End of ensuring user deps didn't inadvertently overwrite langgraph-api --
+# -- Removing build deps from the final image ~<:===~~~ --
+RUN pip uninstall -y pip setuptools wheel
+RUN rm -rf /usr/local/lib/python*/site-packages/pip* /usr/local/lib/python*/site-packages/setuptools* /usr/local/lib/python*/site-packages/wheel* && find /usr/local/bin -name "pip*" -delete || true
+RUN rm -rf /usr/lib/python*/site-packages/pip* /usr/lib/python*/site-packages/setuptools* /usr/lib/python*/site-packages/wheel* && find /usr/bin -name "pip*" -delete || true
+RUN uv pip uninstall --system pip setuptools wheel && rm /usr/bin/uv /usr/bin/uvx
+
+WORKDIR /deps/tool-agent
