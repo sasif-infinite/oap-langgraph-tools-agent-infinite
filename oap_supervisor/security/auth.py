@@ -1,26 +1,101 @@
 import os
-import asyncio
-from langgraph_sdk import Auth
-from langgraph_sdk.auth.types import StudioUser
-from supabase import create_client, Client
+import time
+from functools import lru_cache
 from typing import Optional, Any
 
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_KEY")
-supabase: Optional[Client] = None
+import httpx
+from jose import jwk, jwt
+from jose.utils import base64url_decode
+from langgraph_sdk import Auth
+from langgraph_sdk.auth.types import StudioUser
 
-if supabase_url and supabase_key:
-    supabase = create_client(supabase_url, supabase_key)
+KEYCLOAK_ISSUER = os.environ.get("KEYCLOAK_ISSUER", "")
+KEYCLOAK_AUDIENCE = os.environ.get("KEYCLOAK_AUDIENCE")
+JWKS_PATH = "/protocol/openid-connect/certs"
 
 # The "Auth" object is a container that LangGraph will use to mark our authentication function
 auth = Auth()
+
+
+@lru_cache(maxsize=1)
+def fetch_jwks() -> dict:
+    if not KEYCLOAK_ISSUER:
+        raise Auth.exceptions.HTTPException(
+            status_code=500, detail="Keycloak issuer not configured"
+        )
+    issuer = KEYCLOAK_ISSUER.rstrip("/")
+    url = f"{issuer}{JWKS_PATH}"
+    response = httpx.get(url, timeout=5.0)
+    response.raise_for_status()
+    return response.json()
+
+
+def verify_keycloak_token(raw_token: str) -> dict[str, Any]:
+    if not raw_token:
+        raise Auth.exceptions.HTTPException(
+            status_code=401, detail="Missing bearer token"
+        )
+
+    try:
+        unverified_header = jwt.get_unverified_header(raw_token)
+    except Exception as exc:
+        raise Auth.exceptions.HTTPException(
+            status_code=401, detail="Invalid token header"
+        ) from exc
+
+    jwks = fetch_jwks()
+    signing_key = next(
+        (key for key in jwks.get("keys", []) if key.get("kid") == unverified_header.get("kid")),
+        None,
+    )
+
+    if not signing_key:
+        fetch_jwks.cache_clear()
+        raise Auth.exceptions.HTTPException(
+            status_code=401, detail="Signing key not found for token"
+        )
+
+    message, encoded_signature = raw_token.rsplit(".", 1)
+    decoded_signature = base64url_decode(encoded_signature.encode("utf-8"))
+    public_key = jwk.construct(signing_key)
+
+    if not public_key.verify(message.encode("utf-8"), decoded_signature):
+        raise Auth.exceptions.HTTPException(
+            status_code=401, detail="Invalid token signature"
+        )
+
+    claims = jwt.get_unverified_claims(raw_token)
+
+    now = time.time()
+    if claims.get("exp") and now > claims["exp"]:
+        raise Auth.exceptions.HTTPException(
+            status_code=401, detail="Token has expired"
+        )
+
+    if claims.get("iss") != KEYCLOAK_ISSUER:
+        raise Auth.exceptions.HTTPException(
+            status_code=401, detail="Token issuer mismatch"
+        )
+
+    aud_claim = claims.get("aud")
+    if KEYCLOAK_AUDIENCE:
+        if isinstance(aud_claim, str) and aud_claim != KEYCLOAK_AUDIENCE:
+            raise Auth.exceptions.HTTPException(
+                status_code=401, detail="Token audience mismatch"
+            )
+        if isinstance(aud_claim, list) and KEYCLOAK_AUDIENCE not in aud_claim:
+            raise Auth.exceptions.HTTPException(
+                status_code=401, detail="Token audience mismatch"
+            )
+
+    return claims
 
 
 # The `authenticate` decorator tells LangGraph to call this function as middleware
 # for every request. This will determine whether the request is allowed or not
 @auth.authenticate
 async def get_current_user(authorization: str | None) -> Auth.types.MinimalUserDict:
-    """Check if the user's JWT token is valid using Supabase."""
+    """Check if the user's JWT token is valid using Keycloak."""
 
     # Ensure we have authorization header
     if not authorization:
@@ -28,45 +103,12 @@ async def get_current_user(authorization: str | None) -> Auth.types.MinimalUserD
             status_code=401, detail="Authorization header missing"
         )
 
-    # Parse the authorization header
-    try:
-        scheme, token = authorization.split()
-        assert scheme.lower() == "bearer"
-    except (ValueError, AssertionError):
-        raise Auth.exceptions.HTTPException(
-            status_code=401, detail="Invalid authorization header format"
-        )
+    token = authorization.replace("Bearer ", "")
+    claims = verify_keycloak_token(token)
 
-    # Ensure Supabase client is initialized
-    if not supabase:
-        raise Auth.exceptions.HTTPException(
-            status_code=500, detail="Supabase client not initialized"
-        )
-
-    try:
-        # Verify the JWT token with Supabase using asyncio.to_thread to avoid blocking
-        # This will decode and verify the JWT token in a separate thread
-        async def verify_token() -> dict[str, Any]:
-            response = await asyncio.to_thread(supabase.auth.get_user, token)
-            return response
-
-        response = await verify_token()
-        user = response.user
-
-        if not user:
-            raise Auth.exceptions.HTTPException(
-                status_code=401, detail="Invalid token or user not found"
-            )
-
-        # Return user info if valid
-        return {
-            "identity": user.id,
-        }
-    except Exception as e:
-        # Handle any errors from Supabase
-        raise Auth.exceptions.HTTPException(
-            status_code=401, detail=f"Authentication error: {str(e)}"
-        )
+    return {
+        "identity": claims.get("sub", ""),
+    }
 
 
 @auth.on.threads.create
