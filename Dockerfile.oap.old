@@ -1,0 +1,24 @@
+# Use Astral's uv image with Python preinstalled 
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm AS base 
+# Prevent Python from writing .pyc files & ensure unbuffered logs 
+ENV PYTHONDONTWRITEBYTECODE=1 \ 
+PYTHONUNBUFFERED=1 
+WORKDIR /app 
+# --- Dependency layer (maximizes build caching) --- 
+# Copy only files needed to resolve deps first 
+COPY pyproject.toml ./ 
+# Copy lock if present (keeps versions pinned & speeds up sync) 
+# Create the project venv and install deps 
+# --frozen requires lockfile if present and fails on drift RUN uv sync 
+# Make the venv available on PATH for subsequent layers and CMD 
+ENV PATH="/app/.venv/bin:${PATH}" 
+# --- App layer --- # Copy the rest of your project 
+COPY . . 
+# If your application expects a local .env file inside the image, 
+# uncomment the line below (not recommended for secrets in production). 
+# COPY .env ./ 
+# Expose LangGraph server port 
+EXPOSE 2024 
+# Run the LangGraph API server and bind to all interfaces for container access.
+# The CLI currently exposes a "dev" server for local/self-hosted use; use --no-browser to avoid opening Studio.
+CMD ["uv", "run", "langgraph", "up", "--host", "0.0.0.0", "--port", "2024", "--no-browser"]

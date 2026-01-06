@@ -136,7 +136,7 @@ def make_child_graphs(cfg: GraphConfigPydantic, access_token: Optional[str] = No
 
     Args:
         cfg: The configuration for the graph
-        access_token: The Supabase access token for authentication, can be None
+        access_token: The Keycloak access token for authentication, can be None
 
     Returns:
         A list of RemoteGraph instances
@@ -159,7 +159,7 @@ def make_child_graphs(cfg: GraphConfigPydantic, access_token: Optional[str] = No
     if access_token:
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "x-supabase-access-token": access_token,
+            "x-keycloak-access-token": access_token,
         }
 
     def create_remote_graph_wrapper(agent: AgentsConfig):
@@ -206,12 +206,12 @@ def make_prompt(cfg: GraphConfigPydantic):
 
 def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
-    supabase_access_token = config.get("configurable", {}).get(
-        "x-supabase-access-token"
+    keycloak_access_token = config.get("configurable", {}).get(
+        "x-keycloak-access-token"
     )
 
     # Pass the token to make_child_graphs, which now handles None values
-    child_graphs = make_child_graphs(cfg, supabase_access_token)
+    child_graphs = make_child_graphs(cfg, keycloak_access_token)
 
     # Get the API key from the RunnableConfig or from the environment variable
     model_api_key = get_api_key_for_model(cfg.supervisor_model, config) or "No token found"
@@ -224,4 +224,3 @@ def graph(config: RunnableConfig):
         handoff_tool_prefix="delegate_to_",
         output_mode="full_history",
     )
-

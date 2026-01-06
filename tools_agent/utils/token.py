@@ -6,24 +6,24 @@ from langgraph.config import get_store
 
 
 async def get_mcp_access_token(
-    supabase_token: str,
+    keycloak_token: str,
     base_mcp_url: str,
 ) -> Optional[Dict[str, Any]]:
     """
-    Exchange a Supabase token for an MCP access token.
+    Exchange a Keycloak token for an MCP access token.
 
     Args:
-        supabase_token: The Supabase token to exchange
+        keycloak_token: The Keycloak token to exchange
         base_mcp_url: The base URL for the MCP server
 
     Returns:
         The token data as a dictionary if successful, None otherwise
     """
     try:
-        # Exchange Supabase token for MCP access token
+        # Exchange Keycloak token for MCP access token
         form_data = {
             "client_id": "mcp_default",
-            "subject_token": supabase_token,
+            "subject_token": keycloak_token,
             "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
             "resource": base_mcp_url.rstrip("/") + "/mcp",
             "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
@@ -106,15 +106,15 @@ async def fetch_tokens(config: RunnableConfig) -> dict[str, Any]:
     if current_tokens:
         return current_tokens
 
-    supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
-    if not supabase_token:
+    keycloak_token = config.get("configurable", {}).get("x-keycloak-access-token")
+    if not keycloak_token:
         return None
 
     mcp_config = config.get("configurable", {}).get("mcp_config")
     if not mcp_config or not mcp_config.get("url"):
         return None
 
-    mcp_tokens = await get_mcp_access_token(supabase_token, mcp_config.get("url"))
+    mcp_tokens = await get_mcp_access_token(keycloak_token, mcp_config.get("url"))
 
     await set_tokens(config, mcp_tokens)
     return mcp_tokens

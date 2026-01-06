@@ -171,17 +171,17 @@ async def graph(config: RunnableConfig):
     cfg = GraphConfigPydantic(**config.get("configurable", {}))
     tools = []
 
-    supabase_token = config.get("configurable", {}).get("x-supabase-access-token")
-    if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and supabase_token:
+    keycloak_token = config.get("configurable", {}).get("x-keycloak-access-token")
+    if cfg.rag and cfg.rag.rag_url and cfg.rag.collections and keycloak_token:
         print("RAG tool configured.")
         # Prefer user-supplied RAG URL, then env, then sensible in-network default
-        rag_url = (
-            os.getenv("INTERNAL_RAG_URL")
-            or "https://oap.agentsmp.com"
-        )
+            rag_url = (
+                os.getenv("INTERNAL_RAG_URL")
+                or "https://oap.agentsmp.com"
+            )
         for collection in cfg.rag.collections:
             rag_tool = await create_rag_tool(
-                rag_url, collection, supabase_token
+                rag_url, collection, keycloak_token
             )
             tools.append(rag_tool)
     else:
